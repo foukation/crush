@@ -892,7 +892,7 @@ func (m *UI) handleDialogMsg(msg tea.Msg) tea.Cmd {
 		_, isProviderConfigured := cfg.Providers.Get(msg.Model.Provider)
 		if !isProviderConfigured {
 			m.dialog.CloseDialog(dialog.ModelsID)
-			if cmd := m.openAPIKeyInputDialog(msg.Provider, msg.Model, msg.ModelType); cmd != nil {
+			if cmd := m.openAuthenticationDialog(msg.Provider, msg.Model, msg.ModelType); cmd != nil {
 				cmds = append(cmds, cmd)
 			}
 			break
@@ -908,6 +908,7 @@ func (m *UI) handleDialogMsg(msg tea.Msg) tea.Cmd {
 		modelMsg := fmt.Sprintf("%s model changed to %s", msg.ModelType, msg.Model.Model)
 		cmds = append(cmds, uiutil.ReportInfo(modelMsg))
 		m.dialog.CloseDialog(dialog.APIKeyInputID)
+		m.dialog.CloseDialog(dialog.OAuthID)
 		m.dialog.CloseDialog(dialog.ModelsID)
 		// TODO CHANGE
 	case dialog.ActionPermissionResponse:
@@ -927,7 +928,17 @@ func (m *UI) handleDialogMsg(msg tea.Msg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// openAPIKeyInputDialog opens the API key input dialog.
+func (m *UI) openAuthenticationDialog(provider catwalk.Provider, model config.SelectedModel, modelType config.SelectedModelType) tea.Cmd {
+	switch provider.ID {
+	case "hyper":
+		return m.openOAuthDialog(provider, model, modelType)
+	case catwalk.InferenceProviderCopilot:
+		return m.openOAuthDialog(provider, model, modelType)
+	default:
+		return m.openAPIKeyInputDialog(provider, model, modelType)
+	}
+}
+
 func (m *UI) openAPIKeyInputDialog(provider catwalk.Provider, model config.SelectedModel, modelType config.SelectedModelType) tea.Cmd {
 	if m.dialog.ContainsDialog(dialog.APIKeyInputID) {
 		m.dialog.BringToFront(dialog.APIKeyInputID)
@@ -940,6 +951,21 @@ func (m *UI) openAPIKeyInputDialog(provider catwalk.Provider, model config.Selec
 	}
 	m.dialog.OpenDialog(apiKeyInputDialog)
 	return nil
+}
+
+func (m *UI) openOAuthDialog(provider catwalk.Provider, model config.SelectedModel, modelType config.SelectedModelType) tea.Cmd {
+	if m.dialog.ContainsDialog(dialog.OAuthID) {
+		m.dialog.BringToFront(dialog.OAuthID)
+		return nil
+	}
+
+	oAuthDialog, err := dialog.NewOAuth(m.com, provider, model, modelType)
+	if err != nil {
+		return uiutil.ReportError(err)
+	}
+	m.dialog.OpenDialog(oAuthDialog)
+
+	return oAuthDialog.Init()
 }
 
 func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
